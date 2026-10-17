@@ -56,36 +56,19 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
-# ==================== ДОСТУПЫ: MAX ====================
+# ==================== ДОСТУПЫ: TELEGRAM ====================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-MAX_BOT_TOKEN = BOT_TOKEN
-MAX_API_URL = os.getenv("MAX_API_URL", "https://platform-api2.max.ru").rstrip("/")
 
-# webhook | polling. Long Polling не годится для продакшена (см. докс MAX),
-# но не требует публичного домена с доверенным TLS-сертификатом —
-# поэтому по умолчанию включён polling.
-MAX_MODE = os.getenv("MAX_MODE", "polling").strip().lower()
-MAX_WEBHOOK_URL = os.getenv("MAX_WEBHOOK_URL", "").strip()
-MAX_WEBHOOK_SECRET = os.getenv("MAX_WEBHOOK_SECRET", "").strip()
-MAX_WEBHOOK_HOST = os.getenv("MAX_WEBHOOK_HOST", "0.0.0.0").strip()
-MAX_WEBHOOK_PORT = _int("MAX_WEBHOOK_PORT", 8080)
-MAX_WEBHOOK_PATH = os.getenv("MAX_WEBHOOK_PATH", "/webhook").strip()
-
+# Список id менеджеров. В .env называется ADMIN_TELEGRAM_IDS, но
+# переменная исторически зовётся MANAGER_IDS — её читают хендлеры.
 MANAGER_IDS = _int_list(os.getenv("ADMIN_TELEGRAM_IDS", ""))
 
-# Не более 2 сообщений/сек в один диалог (документировано MAX).
+# Пауза между сообщениями в один диалог. Telegram допускает ~30 сообщений
+# в секунду, но при рассылке на сотню человек и пачке карточек расписания
+# пауза защищает от 429 (Too Many Requests).
 MAX_SEND_DELAY = _float("TG_SEND_DELAY", 0.06)
 MAX_BROADCAST_DELAY = _float("TG_BROADCAST_DELAY", 0.05)
-TG_SEND_DELAY = MAX_SEND_DELAY
-TG_BROADCAST_DELAY = MAX_BROADCAST_DELAY
-MAX_RPS = _float("MAX_RPS", 1.8)
-MAX_TIMEOUT = _float("MAX_TIMEOUT", 30.0)
-MAX_LONGPOLL_TIMEOUT = _int("MAX_LONGPOLL_TIMEOUT", 30)
-
-# Отключать только для диагностики (антивирус/корпоративный прокси,
-# подменяющий TLS) — см. ssl_utils.py. По умолчанию проверка включена.
-MAX_SSL_VERIFY = _bool("MAX_SSL_VERIFY", True)
 
 DB_PATH = os.getenv("DB_PATH", str(Path(__file__).parent / "bot.db"))
 
@@ -117,15 +100,12 @@ STATUS_CONDUCTED = _int("STATUS_CONDUCTED", 3)
 ALL_STATUSES = (STATUS_PLANNED, STATUS_CANCELLED, STATUS_CONDUCTED)
 
 # Тема, ДЗ и отметка «проведён» пишутся ОБРАТНО В CRM: у сущности lesson
-# в AlfaCRM эти поля есть (topic / homework / status). Это главное
-# отличие от бота «Колибри», где их приходилось держать только в SQLite,
-# потому что в AlfaCRM таких полей нет вовсе.
+# в AlfaCRM эти поля есть (topic / homework / status).
 #
 # Локальная таблица lesson_notes при этом сохраняется и остаётся
 # источником для показа: если запись в CRM не прошла (нет прав, урок
 # заблокирован), преподаватель не теряет введённый текст, а в лог уходит
 # предупреждение.
-ALFACRM_WRITE_BACK = _bool("ALFACRM_WRITE_BACK", True)
 
 # Уважительный пропуск в AlfaCRM: id причины из справочника «Причины
 # пропуска урока». Списывать занятие с абонемента или нет решает сама

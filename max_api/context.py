@@ -230,12 +230,19 @@ class CallbackMessage:
         self, text: str, reply_markup: Optional[List[Dict[str, Any]]] = None,
         parse_mode: Optional[str] = "HTML",
     ) -> None:
-        if self.message_id:
+        # Если править нечего (нет mid или сообщение бота старше процесса),
+        # отправляем НОВОЕ сообщение. Раньше в этом случае не происходило
+        # ничего, и нажатие кнопки выглядело неработающим.
+        if not self.message_id:
+            await self.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            return
+        try:
             await self.bot.edit_message(
                 self.message_id, text=text, attachments=reply_markup,
                 fmt=(parse_mode or "").lower() or None,
             )
-        else:
+        except Exception as e:
+            logger.warning(f"Не удалось изменить сообщение {self.message_id}: {e}")
             await self.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
     async def answer(

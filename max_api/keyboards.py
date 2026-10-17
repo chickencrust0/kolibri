@@ -35,12 +35,6 @@ def btn_request_contact(text: str) -> Button:
     return {"type": "request_contact", "text": text}
 
 
-def btn_message(text: str) -> Button:
-    """Кнопка, при нажатии отправляющая боту текстовое сообщение (аналог
-    reply-кнопки в Telegram: пользователь фактически "печатает" text)."""
-    return {"type": "message", "text": text}
-
-
 def keyboard(rows: Keyboard) -> Dict[str, Any]:
     """Оборачивает ряды кнопок во вложение inline_keyboard для attachments=[...]."""
     return {"type": "inline_keyboard", "payload": {"buttons": rows}}

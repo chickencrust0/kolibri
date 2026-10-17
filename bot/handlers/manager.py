@@ -27,6 +27,7 @@ from bot.formatting import (
 )
 from bot.handlers.common import (
     fetch_lessons,
+    freeze_in_crm,
     get_lesson_snapshot,
     get_lesson_summary,
     is_manager,
@@ -374,9 +375,12 @@ async def _resolve_transfer(
         return
 
     try:
-        await callback.bot.send_message(
-            user_id=request["teacher_max_id"], text=f"{label} Заявка №{request_id}."
-        )
+        # Настройку уведомлений уважаем и здесь: автор заявки мог
+        # отключить категорию «Заявки и события занятий».
+        if db.notification_enabled(request["teacher_max_id"], "updates"):
+            await callback.bot.send_message(
+                user_id=request["teacher_max_id"], text=f"{label} Заявка №{request_id}."
+            )
     except Exception as e:
         logger.warning(f"Не удалось уведомить автора заявки {request_id}: {e}")
 
@@ -699,7 +703,9 @@ async def absence_freeze_no_reason(
 
 
 @router.callback_query(F.data.startswith("frz_ok:"))
-async def absence_freeze_valid(callback: Callback, db: Database) -> None:
+async def absence_freeze_valid(
+    callback: Callback, db: Database, crm: AlfaCRMClient, cache: LessonCache
+) -> None:
     """Уважительная причина: ни занятие, ни счётчик заморозок не трогаем."""
     if not _is_manager(callback.from_user.id, db):
         await callback.answer("❌ Недоступно.")

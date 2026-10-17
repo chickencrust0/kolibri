@@ -13,7 +13,7 @@ bot/handlers/teacher.py — расписание, отчёт, закрытие �
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import settings
@@ -37,6 +37,7 @@ from bot.formatting import (
 )
 from bot.handlers.common import (
     fetch_lessons,
+    freeze_in_crm,
     get_lesson_snapshot,
     load_customer_map,
     manager_ids,
@@ -270,10 +271,10 @@ async def _reply(callback: Callback, text: str) -> None:
     """
     Ответ на нажатие кнопки, который человек ТОЧНО увидит.
 
-    callback.answer() показывает всплывающее уведомление — в MAX оно
-    короткое и легко пропускается, из-за чего ранние выходы из
-    обработчика выглядели как «кнопка не работает». Поэтому важные
-    ответы дублируются обычным сообщением в чат.
+    Telegram показывает всплывающее уведомление над клавиатурой всего
+    несколько секунд и обрезает длинный текст, поэтому важные ответы
+    (отказ, «уже обработано», «отметки в CRM не было») дублируются
+    обычным сообщением в чат.
     """
     await callback.answer(text)
     try:
@@ -361,26 +362,6 @@ async def _toggle_attendance(
         # прошло, хотя в CRM ничего не изменилось.
         text = "↩️ Отметки в CRM не было — снимать нечего"
     await _reply(callback, text)
-
-
-def _sched_id(reservation) -> Any:
-    sched = reservation.get("schedule")
-    return sched.get("id") if isinstance(sched, dict) else sched
-
-
-def _minutes_of(value) -> Any:
-    """'16:00' или '2026-09-08 16:00:00' -> 960 минут от полуночи."""
-    text = str(value or "").strip()
-    if not text:
-        return None
-    tail = text.replace("T", " ").split(" ")[-1]
-    parts = tail.split(":")
-    if len(parts) < 2:
-        return None
-    try:
-        return int(parts[0]) * 60 + int(parts[1])
-    except ValueError:
-        return None
 
 
 async def _refresh_attendance_card(

@@ -33,20 +33,39 @@ class TelegramBot:
     async def close(self): await self._bot.session.close()
     async def send_message(self, user_id=None, text="", attachments=None, fmt=None, **kwargs):
         media = next((a for a in (attachments or []) if a.get("type") in ("image", "file")), None)
+        markup = _markup(attachments)
+        # Клавиатура под медиа — только inline: Telegram не принимает
+        # ReplyKeyboardMarkup в sendPhoto/sendDocument.
+        media_markup = markup if isinstance(markup, InlineKeyboardMarkup) else None
         if media:
             token=(media.get("payload") or {}).get("token")
-            if media["type"] == "image": m=await self._bot.send_photo(user_id, token, caption=text or None, parse_mode="HTML" if fmt else None)
-            else: m=await self._bot.send_document(user_id, token, caption=text or None, parse_mode="HTML" if fmt else None)
+            if media["type"] == "image": m=await self._bot.send_photo(user_id, token, caption=text or None, parse_mode="HTML" if fmt else None, reply_markup=media_markup)
+            else: m=await self._bot.send_document(user_id, token, caption=text or None, parse_mode="HTML" if fmt else None, reply_markup=media_markup)
         else:
-            m=await self._bot.send_message(user_id, text, reply_markup=_markup(attachments), parse_mode="HTML" if fmt else None)
+            m=await self._bot.send_message(user_id, text, reply_markup=markup, parse_mode="HTML" if fmt else None)
         mid=f"{m.chat.id}:{m.message_id}"
         self._messages[mid]=m.chat.id
         return {"message":{"body":{"mid":mid}}}
     async def edit_message(self, message_id, text, attachments=None, fmt=None, **kwargs):
         raw=str(message_id); chat_id=self._messages.get(raw)
         msg_id=raw.rsplit(":", 1)[-1]
-        if chat_id:
-            await self._bot.edit_message_text(text, chat_id, int(msg_id), reply_markup=_markup(attachments), parse_mode="HTML" if fmt else None)
+        if not chat_id or not msg_id.isdigit():
+            # Сообщение отправлено не этим процессом (бот перезапускался) —
+            # карта mid -> chat_id живёт только в памяти. Раньше здесь
+            # молча ничего не происходило, и нажатая кнопка выглядела
+            # неработающей. Отправляем новое сообщение.
+            if chat_id:
+                await self.send_message(user_id=chat_id, text=text, attachments=attachments, fmt=fmt)
+            return {}
+        try:
+            await self._bot.edit_message_text(
+                text=text, chat_id=chat_id, message_id=int(msg_id),
+                reply_markup=_markup(attachments), parse_mode="HTML" if fmt else None,
+            )
+        except Exception:
+            # Сообщение могло быть удалено, а текст — не измениться.
+            # Тогда править нечего, но человек обязан увидеть ответ.
+            await self.send_message(user_id=chat_id, text=text, attachments=attachments, fmt=fmt)
         return {}
     async def answer_callback(self, callback_id, notification=None):
         await self._bot.answer_callback_query(callback_id, text=notification)
@@ -63,6 +82,7 @@ def telegram_update(bot, update):
         return {"update_type":"message_created","message":{"sender":{"user_id":sender.id,"first_name":sender.first_name,"last_name":sender.last_name or "","username":sender.username},"body":body}}
     if update.callback_query:
         c=update.callback_query; u=c.from_user; m=c.message
-        mid=f"{m.chat.id}:{m.message_id}"
-        bot._callbacks[c.id]=c; bot._messages[mid]=m.chat.id
-        return {"update_type":"message_callback","callback":{"callback_id":c.id,"payload":c.data or "","user":{"user_id":u.id,"first_name":u.first_name,"last_name":u.last_name or "","username":u.username}},"message":{"body":{"mid":mid,"text":m.text or ""}}}
+        mid=f"{m.chat.id}:{m.message_id}" if m else ""
+        bot._callbacks[c.id]=c
+        if mid: bot._messages[mid]=m.chat.id
+        return {"update_type":"message_callback","callback":{"callback_id":c.id,"payload":c.data or "","user":{"user_id":u.id,"first_name":u.first_name,"last_name":u.last_name or "","username":u.username}},"message":{"body":{"mid":mid,"text":(m.text if m else "") or ""}}}

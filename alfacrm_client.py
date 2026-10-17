@@ -528,6 +528,14 @@ class AlfaCRMClient:
         """
         Клиент + остаток занятий. Поля lessons_left / paid_lesson_count /
         paid_count / subscriptions читает bot/handlers/parent.py.
+
+        ОСТАТОК СЧИТАЕТСЯ ПО АБОНЕМЕНТАМ, А НЕ ПО КАРТОЧКЕ. Раньше здесь
+        брались поля карточки (paid_lesson_count − paid_count), и у
+        родителя всегда показывался один и тот же остаток: в AlfaCRM эти
+        поля заполняются не везде и не обновляются при списании занятия —
+        абонемент живёт в отдельной сущности customer-tariff. Итог
+        складывается из абонементов, а поля карточки остаются только
+        запасным вариантом, когда детализация недоступна.
         """
         customer = await self._find_customer(customer_id)
         if not customer:
@@ -541,9 +549,26 @@ class AlfaCRMClient:
         result["subscriptions"] = []
 
         try:
-            result["subscriptions"] = await self.get_subscriptions(customer_id)
+            subscriptions = await self.get_subscriptions(customer_id)
         except AlfaCRMError as e:
             logger.warning(f"⚠️ Не удалось получить абонементы клиента {customer_id}: {e}")
+            subscriptions = []
+
+        # Сводная строка по карточке (entity == "customer") — это не
+        # абонемент, а те же поля карточки. Итог по ней не пересчитываем,
+        # иначе остаток остался бы «замороженным», как и раньше.
+        real = [s for s in subscriptions if s.get("entity") != "customer"]
+        result["subscriptions"] = subscriptions
+
+        if real:
+            result["lessons_left"] = sum(max(0, self._int(s.get("left"))) for s in real)
+            result["paid_lesson_count"] = sum(self._int(s.get("total")) for s in real)
+            result["paid_count"] = sum(self._int(s.get("used")) for s in real)
+        else:
+            logger.info(
+                f"ℹ️ Абонементы клиента {customer_id} недоступны — остаток взят "
+                f"из карточки ученика ({result['lessons_left']})"
+            )
 
         return result
 

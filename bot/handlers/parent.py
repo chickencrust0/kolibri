@@ -33,7 +33,12 @@ from bot.formatting import (
     format_lesson,  # noqa: F401  (используется через build_schedule)
     safe_call,
 )
-from bot.handlers.common import fetch_lessons, get_lesson_snapshot, manager_ids
+from bot.handlers.common import (
+    fetch_lessons,
+    freeze_in_crm,
+    get_lesson_snapshot,
+    manager_ids,
+)
 from bot.dispatcher import F, Router
 from bot.fsm import FSMContext
 from bot.states import FreezeStates, ParentDateRangeStates

@@ -175,8 +175,24 @@ class Dispatcher:
 
     async def _require_phone(self, ctx: Any, state: FSMContext) -> bool:
         """Block every workflow until this visitor has supplied a phone number."""
+        user_id = ctx.from_user.id
+        # Менеджер опознаётся по id из ADMIN_TELEGRAM_IDS и телефон ему не
+        # нужен — иначе сводка, рассылки и решения по неявкам были бы
+        # недоступны до тех пор, пока он не отправит свой номер.
+        if user_id in settings.MANAGER_IDS:
+            return True
+        # /start, /manager и /id обязаны доходить до своих хендлеров:
+        # именно они показывают меню, принимают пароль менеджера и
+        # подсказывают id для .env. Раньше гейт глушил и их, поэтому
+        # человек видел только «сначала отправьте номер».
+        text = (getattr(ctx, "text", "") or "").strip()
+        if text.startswith("/"):
+            head = text.split()[0][1:].split("@")[0].lower()
+            if head in ("start", "manager", "admin", "id", "myid", "whoami"):
+                return True
+
         db = self.workflow_data.get("db")
-        user = db.get_user(ctx.from_user.id) if db is not None else None
+        user = db.get_user(user_id) if db is not None else None
         if user and (user.get("phone") or "").strip():
             return True
         data = await state.get_data()
@@ -184,14 +200,13 @@ class Dispatcher:
             return True
         if db is not None:
             try:
-                if any(r.get("max_user_id") == ctx.from_user.id and r.get("phone") for r in db.get_leads(None)):
+                if any(r.get("max_user_id") == user_id and r.get("phone") for r in db.get_leads(None)):
                     return True
             except Exception:
                 logger.exception("Не удалось проверить ранее сохранённый телефон")
         # Contact and a manually typed number are the only pre-auth inputs.
         if getattr(ctx, "contact", None) is not None:
             return True
-        text = (getattr(ctx, "text", "") or "").strip()
         if re.fullmatch(r"\+?\d[\d\-()\s]{8,}", text) and len(re.sub(r"\D", "", text)) >= 10:
             return True
         await state.clear()
@@ -199,7 +214,7 @@ class Dispatcher:
         from max_api.keyboards import request_phone_keyboard
         target = getattr(ctx, "message", None) or ctx
         await target.answer(
-            "📱 <b>Сначала отправьте номер телефона.</b>\\n\\n"
+            "📱 <b>Сначала отправьте номер телефона.</b>\n\n"
             "Без номера остальные функции бота недоступны. Нажмите кнопку ниже "
             "или напишите номер сообщением.",
             reply_markup=request_phone_keyboard(), parse_mode="HTML",
